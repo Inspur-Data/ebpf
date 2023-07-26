@@ -24,6 +24,8 @@ import (
 //go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc $BPF_CLANG -cflags $BPF_CFLAGS bpf xdp.c -- -I../headers
 
 func main() {
+
+	
 	if len(os.Args) < 2 {
 		log.Fatalf("Please specify a network interface")
 	}
