@@ -351,11 +351,11 @@ if( bpf_htons(tcp->dest) == 8080)
 
 集群的架构如下如所示，在node1节点，通过PodIP访问node2上的tomcat应用
 
-![](arch.png)
+![](../images/arch.png)
 
 **①在node2宿主机网卡ingress方向挂载ebpf程序**，判断到目的端口为8080的数据包直接通过redirect重定向至calico_xxx，如下图所示 ：
 
-![](redirect.png)
+![](../images/redirect.png)
 
 发现访问不通，通过在各个关键节点抓包发现数据包可以到达calico_xxxx，但未抓到回复的数据包。分析数据包中具体信息发现此时的MAC地址还是原数据包的MAC，redirect只是将原数据包透传至了calico_xxx，到达calico_xxx后未进行任何回包处理，直接丢弃了。
 
@@ -363,6 +363,6 @@ if( bpf_htons(tcp->dest) == 8080)
 
 **③calico_xxx的ingress方向挂载ebpf程序用于回包**
 
-![redirect_neigh](redirect_neigh.png)
+![redirect_neigh](../images/redirect_neigh.png)
 
 上图中红色线条代表回包时的路径，pod响应请求时，数据包进入calico_xxx时同样进行redirect_neigh操作。此处挂载的ebpf程序跟宿主机网卡挂载的ebpf程序逻辑略有不同，此处判断的是目的地址为100.2.97.105的数据包redirect至ens47f1网卡。由于是测试demo，很多变量都是在代码里写死的，具体使用时可根据业务进行动态获取，在此程序基础上修改可实现数据包重定向。

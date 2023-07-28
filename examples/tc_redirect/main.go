@@ -25,7 +25,7 @@ import (
 
 
 // $BPF_CLANG and $BPF_CFLAGS are set by the Makefile.
-//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang-14 -cflags $BPF_CFLAGS bpf overlay.c -- -I../headers
+//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang-14 -cflags $BPF_CFLAGS bpf redirect.c -- -I../headers
 func main() {
 	
 	if len(os.Args) < 2 {
