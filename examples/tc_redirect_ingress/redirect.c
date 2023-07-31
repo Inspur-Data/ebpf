@@ -78,8 +78,7 @@ int tc_print(struct __sk_buff *skb)
           //only for test
           struct bpf_redir_neigh neighInfo = {0};
           neighInfo.nh_family = AF_INET;
-          //100.2.97.107
-          //neighInfo.ipv4_nh = 1801519716;
+          //100.2.97.105
           neighInfo.ipv4_nh = iph->daddr;
           return bpf_redirect_neigh(3, &neighInfo, sizeof(neighInfo), 0);
           //return bpf_redirect(26,0);

@@ -91,7 +91,7 @@ tc filter add dev [eth0] ingress bpf da obj [mybpf.o] sec tc
 如果手动执行命令卸载ebpf程序如下
 
 ```shell
-tc add dev [eth0] qdisc
+tc del dev [eth0] qdisc
 ```
 
 **②在用户态查找宿主机网卡，并将网卡具体信息存储进ebpfMap，key为IP，value为ifindex。**
@@ -366,3 +366,96 @@ if( bpf_htons(tcp->dest) == 8080)
 ![redirect_neigh](../images/redirect_neigh.png)
 
 上图中红色线条代表回包时的路径，pod响应请求时，数据包进入calico_xxx时同样进行redirect_neigh操作。此处挂载的ebpf程序跟宿主机网卡挂载的ebpf程序逻辑略有不同，此处判断的是目的地址为100.2.97.105的数据包redirect至ens47f1网卡。由于是测试demo，很多变量都是在代码里写死的，具体使用时可根据业务进行动态获取，在此程序基础上修改可实现数据包重定向。
+
+## 附录
+
+手动修改数据包中的元数据
+
+```c
+#include <linux/bpf.h>
+#include <linux/if_ether.h>
+#include <linux/ip.h>
+#include <linux/in.h>
+#include <linux/if_packet.h>
+#include <linux/filter.h>
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+#define MAX_PACKET_SIZE 1514
+
+__section("prog")
+int redirect_pkt(struct __sk_buff *skb)
+{
+    void *data = (void *)(long)skb->data;
+    void *data_end = (void *)(long)skb->data_end;
+
+    struct ethhdr *eth = data;
+    if (eth + 1 > data_end)
+        return XDP_DROP;
+
+    struct iphdr *ip = data + sizeof(struct ethhdr);
+    if (ip + 1 > data_end)
+        return XDP_DROP;
+
+    // 检查IP协议版本是否为IPv4
+    if (ip->version != 4)
+        return XDP_DROP;
+
+    // 修改目标MAC地址为00:11:22:33:44:55
+    unsigned char new_mac[ETH_ALEN] = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55};
+    memcpy(eth->h_dest, new_mac, ETH_ALEN);
+
+    // 修改源MAC地址为当前接口的MAC地址
+    unsigned char* if_mac = bpf_hdr_pointer(skb)->h_source;
+    memcpy(eth->h_source, if_mac, ETH_ALEN);
+
+    // 重定向数据包到指定接口
+    int ifindex = 1;  // 替换为目标接口的索引
+    return bpf_redirect(ifindex, 0);
+}
+```
+
+使用bpf_store修改数据包中的元数据
+
+```
+// SPDX-License-Identifier: GPL-2.0
+#include <linux/bpf.h>
+#include <linux/if_ether.h>
+#include <linux/ip.h>
+#include <linux/tcp.h>
+SEC("tc")
+int tc_redirect_to_port(struct __sk_buff *skb) {
+    struct ethhdr *eth = bpf_hdr_pointer(skb, 0);
+    struct iphdr *ip = (struct iphdr *)(eth + 1);
+    struct tcphdr *tcp = (struct tcphdr *)(ip + 1);
+
+    // 过滤TCP协议的数据包
+    if (ip->protocol != IPPROTO_TCP) {
+        return TC_ACT_OK;
+    }
+
+    // 过滤目的端口为6081的数据包
+    if (ntohs(tcp->dest) != 6081) {
+        return TC_ACT_OK;
+    }
+
+    // 修改目的端口为新的目标端口，例如6080
+    bpf_skb_store_bytes(skb, offsetof(struct tcphdr, dest), &new_port, sizeof(new_port), 0);
+
+    // 设置新的目标IP地址，例如10.0.0.2
+    __be32 new_ip = htonl(0x0a000002); // 10.0.0.2
+    bpf_skb_store_bytes(skb, offsetof(struct iphdr, daddr), &new_ip, sizeof(new_ip), 0);
+
+    // 更新校验和
+    bpf_l3_csum_replace(skb, offsetof(struct iphdr, check), 0, ~ntohs(ip->check), BPF_F_PSEUDO_HDR);
+
+    // 更新TCP校验和
+    bpf_l4_csum_replace(skb, offsetof(struct tcphdr, check), 0, ~ntohs(tcp->check), BPF_F_PSEUDO_HDR);
+
+    return TC_ACT_REDIRECT; // 重定向数据包
+}
+```
+

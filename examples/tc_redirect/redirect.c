@@ -53,25 +53,27 @@ int tc_print(struct __sk_buff *skb)
           return TC_ACT_OK;
       } 
 
-      //bpf_printk("In the IP header,Source IP: %d",iph->saddr);
-      bpf_printk("In the IP header,Source IPv4: %pI4",&(iph->saddr));
-     // bpf_printk("In the IP header,Dest IP: %d",iph->daddr);
-      bpf_printk("In the IP header,Dest IPv4: %pI4",&(iph->daddr));
-      bpf_printk("In the IP header,ID : %d",iph->id);
-    
-      bpf_printk("In the TCP header,Source port: %d",bpf_htons(tcp->source));
-      bpf_printk("In the TCP header,Dest port: %d",bpf_htons(tcp->dest));
+
       if( bpf_htons(tcp->dest) == 8080)
       {
+        bpf_printk("In the IP header,Source IPv4: %pI4",&(iph->saddr));
+        bpf_printk("In the IP header,Dest IPv4: %pI4",&(iph->daddr));
+        bpf_printk("In the IP header,ID : %d",iph->id);
+      
+        bpf_printk("In the TCP header,Source port: %d",bpf_htons(tcp->source));
+        bpf_printk("In the TCP header,Dest port: %d",bpf_htons(tcp->dest));
+
         unsigned int key;
         key = iph->daddr;
         unsigned int *ifindex;
         ifindex = bpf_map_lookup_elem(&ifindex_map, &key);
         if (ifindex)
         {
+          
             bpf_printk("In the ifindex Map,ip:%pI4, ifindex:%d",&key,*ifindex);
-            return bpf_redirect(*ifindex,0);
-        }else
+            return bpf_redirect_neigh(ifindex, &neighInfo, sizeof(neighInfo), 0);
+        }
+        else
         {
           bpf_printk("Cant find ip:%pI4 in the ifindex Map,intIP:%d,redirect_neigh to 26 for test",&key,key);
           //only for test
@@ -79,14 +81,9 @@ int tc_print(struct __sk_buff *skb)
           neighInfo.nh_family = AF_INET;
           neighInfo.ipv4_nh = iph->daddr;
           return bpf_redirect_neigh(26, &neighInfo, sizeof(neighInfo), 0);
-          //return bpf_redirect(26,0);
-        }
-        
-        //return bpf_redirect(26,0);
-        
+        }       
       }
-      
-     
+       
     }
 
   }
